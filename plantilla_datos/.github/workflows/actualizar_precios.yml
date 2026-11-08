@@ -1,0 +1,77 @@
+# Copia este archivo al repositorio PRIVADO de datos, en .github/workflows/.
+# Necesita la variable de repositorio REPO_CODIGO con el repositorio público del código
+# (por ejemplo: nocbain/lista-regalos-web). Settings → Secrets and variables → Actions → Variables.
+name: Actualizar precios
+
+on:
+  schedule:
+    - cron: '23 5 * * *'   # cada día a las 05:23 UTC
+  workflow_dispatch:        # botón «Run workflow» para lanzarlo a mano
+
+permissions:
+  contents: write
+
+concurrency:
+  group: actualizar-precios
+  cancel-in-progress: false
+
+jobs:
+  precios:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Comprobar la configuración
+        env:
+          REPO_CODIGO: ${{ vars.REPO_CODIGO }}
+        run: |
+          if [ -z "$REPO_CODIGO" ]; then
+            echo "::error::Falta la variable REPO_CODIGO (repositorio público del código, por ejemplo usuario/lista-regalos-web)."
+            exit 1
+          fi
+
+      - name: Descargar los datos
+        uses: actions/checkout@v4
+        with:
+          path: datos
+
+      - name: Descargar el código
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.REPO_CODIGO }}
+          path: codigo
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instalar Pillow (fotos)
+        run: pip install Pillow
+
+      - name: Actualizar precios y guardar
+        working-directory: datos
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for intento in 1 2 3; do
+            git fetch origin "$GITHUB_REF_NAME"
+            git reset --hard "origin/$GITHUB_REF_NAME"
+            python3 ../codigo/precios/actualizar_precios.py . --informe ../informe.json
+            git add -A listas fotos
+            if git diff --cached --quiet; then
+              echo "Sin cambios."
+              exit 0
+            fi
+            git commit -m "Precios del $(date -u +%F)"
+            if git push origin "HEAD:$GITHUB_REF_NAME"; then
+              exit 0
+            fi
+            echo "La lista cambió mientras se actualizaba. Lo intento otra vez ($intento)."
+          done
+          exit 1
+
+      - name: Informe
+        if: always()
+        run: |
+          if [ -f informe.json ]; then
+            { echo '```json'; cat informe.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
