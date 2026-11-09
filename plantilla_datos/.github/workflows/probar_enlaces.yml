@@ -1,0 +1,42 @@
+# Copia este archivo al repositorio PRIVADO de datos, en .github/workflows/.
+# Sirve para saber si el script de precios puede leer un enlace desde GitHub.
+name: Probar enlaces
+
+on:
+  workflow_dispatch:
+    inputs:
+      enlaces:
+        description: 'Enlaces https:// separados por espacios'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  probar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.REPO_CODIGO }}
+          path: codigo
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Probar
+        working-directory: codigo/precios
+        env:
+          ENLACES: ${{ inputs.enlaces }}
+        run: |
+          python3 probar_enlaces.py "$ENLACES" | tee ../../resultado.json
+
+      - name: Resumen
+        if: always()
+        run: |
+          if [ -f resultado.json ]; then
+            { echo '```json'; cat resultado.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
