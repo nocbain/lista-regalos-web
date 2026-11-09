@@ -136,12 +136,19 @@ def first_image(product):
     return image if isinstance(image, str) and image.startswith('https://') else None
 
 
+def describe_page(page_html):
+    """Resumen corto de una página inesperada, para el informe."""
+    match = re.search(r'<title[^>]*>([\s\S]*?)</title>', page_html, re.I)
+    title = re.sub(r'\s+', ' ', html_lib.unescape(match.group(1))).strip()[:80] if match else 'sin título'
+    return 'título: «' + title + '», ' + str(len(page_html)) + ' caracteres'
+
+
 def read_klarna(url):
     """Devuelve (precios por tienda, imagen) de una ficha de Klarna."""
     page = fetch_bytes(url).decode('utf-8', 'ignore')
     products = find_products(page)
     if not products:
-        raise FetchError('la ficha no tiene datos de producto')
+        raise FetchError('la ficha no tiene datos de producto (' + describe_page(page) + ')')
     product = products[0]
     offers = product.get('offers') or {}
     listed = offers.get('offers') if isinstance(offers, dict) else offers
